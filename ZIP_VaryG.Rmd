@@ -1,0 +1,928 @@
+---
+title: "ZIP_1X_varyG"
+author: "Zahra"
+date: "2023-05-02"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(kableExtra)
+library(xtable)
+library(MASS)
+library(FDRSeg)
+library(stats)
+
+```
+
+## G=12
+
+``` {r Scenario2-sim1,eval=TRUE,echo=FALSE}
+rm(list = ls())
+
+###################################################################################################
+source("E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/ZIP_1X_2023.R")
+
+ K=2
+  N=1200
+  G=12
+  Phi<- c(0.1,0.1)
+  P<- c(0.5,0.5)
+  P1<- c(0.7,0.3)
+  
+  S<- 100
+  #S<- 50
+  P_hat<- matrix(NA,ncol=length(P),nrow=S)
+  Phi_hat<- matrix(NA,ncol=length(P),nrow=S)
+  
+  beta_0_est<- matrix(NA,nrow=S,ncol=G)
+  rho1_est<- matrix(NA,nrow=S,ncol=G)
+  rho2_est<- matrix(NA,nrow=S,ncol=G)
+  beta_pg_est<- matrix(NA,nrow=S,ncol=G)
+  
+  V_M<- rep(NA,S)
+  elapsed<- rep(NA,S)
+  
+  #iter<- NULL
+  #beta_0_est
+  #rho_est
+  
+  for(s in 1:S){
+  
+  
+  Z <- sample(c(1:K),size=N,replace = TRUE,prob=P)
+  
+  
+  
+  
+  ### creating lambdas 
+  
+  T <- round(rnorm(N,mean=10,sd=0.5)) ## vector with known Totals#hist(T)
+  #T
+  beta_0 <- rep(0.85,G) ## vector of beta_0 for all genes (baseline)
+  #rho_1 <- c(rgamma(1:3,shape=20,rate=10),rep(0,2)) ## fixed effect due to cluster 1, no effect for the last 5 genes
+  #rho_2 <- c(rep(0,3),rgamma(1:2,shape=20,rate=10)) ## fixed effect due to cluster 2, no effect for the first 5 genes
+  
+  
+  rho_1 <- c(rep(2,round(G/2)),rep(-2,round(G/2))) ## fixed effect due to cluster 1, no effect for the last 5 genes
+  rho_2 <- c(rep(-2,round(G/2)),rep(2,round(G/2))) ## fixed effect due to cluster 2, no effect for the first 5 genes
+  rho <- rbind(rho_1,rho_2)
+  #rho
+  x<- rbinom(N,1,0.5)
+  beta_pg<- c(rep(1,round(G/2)),rep(0.5,round(G/2)))
+  
+  
+  #x<- rnorm(N)
+  #beta_gp<- rnorm(G,2)
+  #beta_gp
+  
+  #beta_gp%*%t(x)
+  #beta_gp[2]*x
+  
+  #x
+  #beta<- cbind(beta_0,beta_gp)
+  #beta
+  #X<- cbind(1,x)
+  #X
+  #beta[1,]*X
+  #X
+  #beta[1,]*X[,1]
+  #beta%*%t(X)
+  
+  cell_matrix <- U_ng<-  matrix(NA,nrow=N,ncol=G)
+  for(n in 1:N){
+    for(g in 1:G){
+    if(Z[n] == 1){
+        out_1 <- ZIP_r(1,prob=Phi[1],theta =exp(log(T[n]) + beta_0[g] + rho[1,g]+beta_pg[g]*x[n]))
+        cell_matrix[n,g]<- out_1$Y
+        U_ng[n,g]<- out_1$U
+        
+      }
+    #}
+    else if(Z[n] == 2){
+      #for(g in 1:G){
+        out_2 <- ZIP_r(1,prob=Phi[2],theta=exp(log(T[n]) + beta_0[g] + rho[2,g]+beta_pg[g]*x[n]))
+        cell_matrix[n,g]<- out_2$Y
+        U_ng[n,g]<- out_2$U
+        
+      }
+    }
+  }
+  cell_matrix
+  #  Y<- cell_matrix
+  #  Y <- Y[order(Z),]
+  # # Y
+  # Y <- as.data.frame(Y)
+  #  pheatmap(Y, cluster_cols = F, cluster_rows = F)  
+  # 
+  
+  
+  elapsed[s]<- system.time({output<- ZIP_Mix_EM_1X(Y=cell_matrix,totals=T,beta_0g=beta_0,rho_gk=rho,Beta_pg=beta_pg,X=x,P=P,Phi=Phi,eps=1e-8,maxiter_EM=1000)})["elapsed"]  
+    #print(output)
+  
+  
+  
+   P_hat[s,]<- output$P
+   Phi_hat[s,]<- output$phi
+   beta_0_est[s,]<- output$beta_0g
+   beta_pg_est[s,]<- output$beta_pg_update
+   rho1_est[s,]<- output$rho_gk[1,]
+   rho2_est[s,]<- output$rho_gk[2,]
+   
+   Z0<- Z
+   zhat<- output$Postprobs
+   zhat<- apply(zhat,1,which.max)
+   V_M[s]<- v_measure(Z0,zhat)
+  
+  }
+#output   
+   
+#P_hat
+#Phi_hat  
+#beta_0_est
+#beta_pg_est
+#rho1_est
+#rho2_est
+#elapsed
+#V_M
+
+
+
+
+
+
+beta_0g_MSE<- beta_0g_MAD<- beta_pg_MSE<- beta_pg_MAD<- rho1_MSE<- rho1_MAD<- rho2_MSE<- rho2_MAD<- matrix(data=NA,ncol=G,nrow=S)
+
+for(s in 1:S){
+beta_0g_MSE[s,]<- (beta_0_est[s,]-beta_0)^2
+beta_0g_MAD[s,]<- abs(beta_0_est[s,]-beta_0)
+
+beta_pg_MSE[s,]<- (beta_pg_est[s,]-beta_pg)^2
+beta_pg_MAD[s,]<- abs(beta_pg_est[s,]-beta_pg)
+
+rho1_MSE[s,]<- (rho1_est[s,]-rho_1)^2
+rho1_MAD[s,]<- abs(rho1_est[s,]-rho_1)
+
+rho2_MSE[s,]<- (rho2_est[s,]-rho_2)^2
+rho2_MAD[s,]<- abs(rho2_est[s,]-rho_2)
+}
+
+MSE_B0<- mean(beta_0g_MSE)
+MSE_BP<- mean(beta_pg_MSE)
+MSE_rho1<- mean(rho1_MSE)
+MSE_rho2<- mean(rho2_MSE)
+
+MAD_B0<- median(apply(beta_0g_MAD,1,median))
+MAD_BP<- median(apply(beta_pg_MAD,1,median))
+MAD_rho1<- median(apply(rho1_MAD,1,median))
+MAD_rho2<- median(apply(rho2_MAD,1,median))
+
+
+P_sim1_G12<- write.csv(P_hat,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/P_sim1_G12.csv")
+Phi_sim1_G12<- write.csv(Phi_hat,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/Phi_sim1_G12.csv")
+VM_sim1_G12<- write.csv(V_M,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/VM_sim1_G12.csv")
+elapsed_sim1_G12<- write.csv(elapsed,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/elapsed_sim1_G12.csv")
+
+beta_0g_MSE_sim1_G12<- write.csv(beta_0g_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_0g_MSE_sim1_G12.csv")
+beta_0g_MAD_sim1_G12<- write.csv(beta_0g_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_0g_MAD_sim1_G12.csv")
+
+beta_pg_MSE_sim1_G12<- write.csv(beta_pg_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_pg_MSE_sim1_G12.csv")
+beta_pg_MAD_sim1_G12<- write.csv(beta_pg_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_pg_MAD_sim1_G12.csv")
+
+rho1_MSE_sim1_G12<- write.csv(rho1_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho1_MSE_sim1_G12.csv")
+rho1_MAD_sim1_G12<- write.csv(rho1_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho1_MAD_sim1_G12.csv")
+
+rho2_MSE_sim1_G12<- write.csv(rho2_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho2_MSE_sim1_G12.csv")
+rho2_MAD_sim1_G12<- write.csv(rho2_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho2_MAD_sim1_G12.csv")
+
+```
+
+## G=60
+
+``` {r Scenario2-sim2,eval=TRUE,echo=FALSE}
+rm(list = ls())
+
+###################################################################################################
+source("E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/ZIP_1X_2023.R")
+
+ K=2
+  N=1200
+  G=60
+  Phi<- c(0.1,0.1)
+  P<- c(0.5,0.5)
+  P1<- c(0.7,0.3)
+  
+  S<- 100
+  #S<- 50
+  P_hat<- matrix(NA,ncol=length(P),nrow=S)
+  Phi_hat<- matrix(NA,ncol=length(P),nrow=S)
+  
+  beta_0_est<- matrix(NA,nrow=S,ncol=G)
+  rho1_est<- matrix(NA,nrow=S,ncol=G)
+  rho2_est<- matrix(NA,nrow=S,ncol=G)
+  beta_pg_est<- matrix(NA,nrow=S,ncol=G)
+  
+  V_M<- rep(NA,S)
+  elapsed<- rep(NA,S)
+  
+  #iter<- NULL
+  #beta_0_est
+  #rho_est
+  
+  for(s in 1:S){
+  
+  
+  Z <- sample(c(1:K),size=N,replace = TRUE,prob=P)
+  
+  
+  
+  
+  ### creating lambdas 
+  
+  T <- round(rnorm(N,mean=10,sd=0.5)) ## vector with known Totals#hist(T)
+  #T
+  beta_0 <- rep(0.85,G) ## vector of beta_0 for all genes (baseline)
+  #rho_1 <- c(rgamma(1:3,shape=20,rate=10),rep(0,2)) ## fixed effect due to cluster 1, no effect for the last 5 genes
+  #rho_2 <- c(rep(0,3),rgamma(1:2,shape=20,rate=10)) ## fixed effect due to cluster 2, no effect for the first 5 genes
+  
+  
+  rho_1 <- c(rep(2,round(G/2)),rep(-2,round(G/2))) ## fixed effect due to cluster 1, no effect for the last 5 genes
+  rho_2 <- c(rep(-2,round(G/2)),rep(2,round(G/2))) ## fixed effect due to cluster 2, no effect for the first 5 genes
+  rho <- rbind(rho_1,rho_2)
+  #rho
+  x<- rbinom(N,1,0.5)
+  beta_pg<- c(rep(1,round(G/2)),rep(0.5,round(G/2)))
+  
+  
+  #x<- rnorm(N)
+  #beta_gp<- rnorm(G,2)
+  #beta_gp
+  
+  #beta_gp%*%t(x)
+  #beta_gp[2]*x
+  
+  #x
+  #beta<- cbind(beta_0,beta_gp)
+  #beta
+  #X<- cbind(1,x)
+  #X
+  #beta[1,]*X
+  #X
+  #beta[1,]*X[,1]
+  #beta%*%t(X)
+  
+  cell_matrix <- U_ng<-  matrix(NA,nrow=N,ncol=G)
+  for(n in 1:N){
+    for(g in 1:G){
+    if(Z[n] == 1){
+        out_1 <- ZIP_r(1,prob=Phi[1],theta =exp(log(T[n]) + beta_0[g] + rho[1,g]+beta_pg[g]*x[n]))
+        cell_matrix[n,g]<- out_1$Y
+        U_ng[n,g]<- out_1$U
+        
+      }
+    #}
+    else if(Z[n] == 2){
+      #for(g in 1:G){
+        out_2 <- ZIP_r(1,prob=Phi[2],theta=exp(log(T[n]) + beta_0[g] + rho[2,g]+beta_pg[g]*x[n]))
+        cell_matrix[n,g]<- out_2$Y
+        U_ng[n,g]<- out_2$U
+        
+      }
+    }
+  }
+  cell_matrix
+  #  Y<- cell_matrix
+  #  Y <- Y[order(Z),]
+  # # Y
+  # Y <- as.data.frame(Y)
+  #  pheatmap(Y, cluster_cols = F, cluster_rows = F)  
+  # 
+  
+  
+  elapsed[s]<- system.time({output<- ZIP_Mix_EM_1X(Y=cell_matrix,totals=T,beta_0g=beta_0,rho_gk=rho,Beta_pg=beta_pg,X=x,P=P,Phi=Phi,eps=1e-8,maxiter_EM=1000)})["elapsed"]  
+    #print(output)
+  
+  
+  
+   P_hat[s,]<- output$P
+   Phi_hat[s,]<- output$phi
+   beta_0_est[s,]<- output$beta_0g
+   beta_pg_est[s,]<- output$beta_pg_update
+   rho1_est[s,]<- output$rho_gk[1,]
+   rho2_est[s,]<- output$rho_gk[2,]
+   
+   Z0<- Z
+   zhat<- output$Postprobs
+   zhat<- apply(zhat,1,which.max)
+   V_M[s]<- v_measure(Z0,zhat)
+  
+  }
+#output   
+   
+#P_hat
+#Phi_hat  
+#beta_0_est
+#beta_pg_est
+#rho1_est
+#rho2_est
+#elapsed
+#V_M
+
+
+
+
+
+
+beta_0g_MSE<- beta_0g_MAD<- beta_pg_MSE<- beta_pg_MAD<- rho1_MSE<- rho1_MAD<- rho2_MSE<- rho2_MAD<- matrix(data=NA,ncol=G,nrow=S)
+
+for(s in 1:S){
+beta_0g_MSE[s,]<- (beta_0_est[s,]-beta_0)^2
+beta_0g_MAD[s,]<- abs(beta_0_est[s,]-beta_0)
+
+beta_pg_MSE[s,]<- (beta_pg_est[s,]-beta_pg)^2
+beta_pg_MAD[s,]<- abs(beta_pg_est[s,]-beta_pg)
+
+rho1_MSE[s,]<- (rho1_est[s,]-rho_1)^2
+rho1_MAD[s,]<- abs(rho1_est[s,]-rho_1)
+
+rho2_MSE[s,]<- (rho2_est[s,]-rho_2)^2
+rho2_MAD[s,]<- abs(rho2_est[s,]-rho_2)
+}
+
+MSE_B0<- mean(beta_0g_MSE)
+MSE_BP<- mean(beta_pg_MSE)
+MSE_rho1<- mean(rho1_MSE)
+MSE_rho2<- mean(rho2_MSE)
+
+MAD_B0<- median(apply(beta_0g_MAD,1,median))
+MAD_BP<- median(apply(beta_pg_MAD,1,median))
+MAD_rho1<- median(apply(rho1_MAD,1,median))
+MAD_rho2<- median(apply(rho2_MAD,1,median))
+
+
+P_sim2_G60<- write.csv(P_hat,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/P_sim2_G60.csv")
+Phi_sim2_G60<- write.csv(Phi_hat,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/Phi_sim2_G60.csv")
+VM_sim2_G60<- write.csv(V_M,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/VM_sim2_G60.csv")
+elapsed_sim2_G60<- write.csv(elapsed,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/elapsed_sim2_G60.csv")
+
+beta_0g_MSE_sim2_G60<- write.csv(beta_0g_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_0g_MSE_sim2_G60.csv")
+beta_0g_MAD_sim2_G60<- write.csv(beta_0g_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_0g_MAD_sim2_G60.csv")
+
+beta_pg_MSE_sim2_G60<- write.csv(beta_pg_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_pg_MSE_sim2_G60.csv")
+beta_pg_MAD_sim2_G60<- write.csv(beta_pg_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_pg_MAD_sim2_G60.csv")
+
+rho1_MSE_sim2_G60<- write.csv(rho1_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho1_MSE_sim2_G60.csv")
+rho1_MAD_sim2_G60<- write.csv(rho1_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho1_MAD_sim2_G60.csv")
+
+rho2_MSE_sim2_G60<- write.csv(rho2_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho2_MSE_sim2_G60.csv")
+rho2_MAD_sim2_G60<- write.csv(rho2_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho2_MAD_sim2_G60.csv")
+
+```
+
+## G=120
+``` {r Scenario2-sim3,eval=TRUE,echo=FALSE}
+rm(list = ls())
+
+###################################################################################################
+source("E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/ZIP_1X_2023.R")
+
+ K=2
+  N=1200
+  G=120
+  Phi<- c(0.1,0.1)
+  P<- c(0.5,0.5)
+  P1<- c(0.7,0.3)
+  
+  S<- 100
+  #S<- 50
+  P_hat<- matrix(NA,ncol=length(P),nrow=S)
+  Phi_hat<- matrix(NA,ncol=length(P),nrow=S)
+  
+  beta_0_est<- matrix(NA,nrow=S,ncol=G)
+  rho1_est<- matrix(NA,nrow=S,ncol=G)
+  rho2_est<- matrix(NA,nrow=S,ncol=G)
+  beta_pg_est<- matrix(NA,nrow=S,ncol=G)
+  
+  V_M<- rep(NA,S)
+  elapsed<- rep(NA,S)
+  
+  #iter<- NULL
+  #beta_0_est
+  #rho_est
+  
+  for(s in 1:S){
+  
+  
+  Z <- sample(c(1:K),size=N,replace = TRUE,prob=P)
+  
+  
+  
+  
+  ### creating lambdas 
+  
+  T <- round(rnorm(N,mean=10,sd=0.5)) ## vector with known Totals#hist(T)
+  #T
+  beta_0 <- rep(0.85,G) ## vector of beta_0 for all genes (baseline)
+  #rho_1 <- c(rgamma(1:3,shape=20,rate=10),rep(0,2)) ## fixed effect due to cluster 1, no effect for the last 5 genes
+  #rho_2 <- c(rep(0,3),rgamma(1:2,shape=20,rate=10)) ## fixed effect due to cluster 2, no effect for the first 5 genes
+  
+  
+  rho_1 <- c(rep(2,round(G/2)),rep(-2,round(G/2))) ## fixed effect due to cluster 1, no effect for the last 5 genes
+  rho_2 <- c(rep(-2,round(G/2)),rep(2,round(G/2))) ## fixed effect due to cluster 2, no effect for the first 5 genes
+  rho <- rbind(rho_1,rho_2)
+  #rho
+  x<- rbinom(N,1,0.5)
+  beta_pg<- c(rep(1,round(G/2)),rep(0.5,round(G/2)))
+  
+  
+  #x<- rnorm(N)
+  #beta_gp<- rnorm(G,2)
+  #beta_gp
+  
+  #beta_gp%*%t(x)
+  #beta_gp[2]*x
+  
+  #x
+  #beta<- cbind(beta_0,beta_gp)
+  #beta
+  #X<- cbind(1,x)
+  #X
+  #beta[1,]*X
+  #X
+  #beta[1,]*X[,1]
+  #beta%*%t(X)
+  
+  cell_matrix <- U_ng<-  matrix(NA,nrow=N,ncol=G)
+  for(n in 1:N){
+    for(g in 1:G){
+    if(Z[n] == 1){
+        out_1 <- ZIP_r(1,prob=Phi[1],theta =exp(log(T[n]) + beta_0[g] + rho[1,g]+beta_pg[g]*x[n]))
+        cell_matrix[n,g]<- out_1$Y
+        U_ng[n,g]<- out_1$U
+        
+      }
+    #}
+    else if(Z[n] == 2){
+      #for(g in 1:G){
+        out_2 <- ZIP_r(1,prob=Phi[2],theta=exp(log(T[n]) + beta_0[g] + rho[2,g]+beta_pg[g]*x[n]))
+        cell_matrix[n,g]<- out_2$Y
+        U_ng[n,g]<- out_2$U
+        
+      }
+    }
+  }
+  cell_matrix
+  #  Y<- cell_matrix
+  #  Y <- Y[order(Z),]
+  # # Y
+  # Y <- as.data.frame(Y)
+  #  pheatmap(Y, cluster_cols = F, cluster_rows = F)  
+  # 
+  
+  
+  elapsed[s]<- system.time({output<- ZIP_Mix_EM_1X(Y=cell_matrix,totals=T,beta_0g=beta_0,rho_gk=rho,Beta_pg=beta_pg,X=x,P=P,Phi=Phi,eps=1e-8,maxiter_EM=1000)})["elapsed"]  
+    #print(output)
+  
+  
+  
+   P_hat[s,]<- output$P
+   Phi_hat[s,]<- output$phi
+   beta_0_est[s,]<- output$beta_0g
+   beta_pg_est[s,]<- output$beta_pg_update
+   rho1_est[s,]<- output$rho_gk[1,]
+   rho2_est[s,]<- output$rho_gk[2,]
+   
+   Z0<- Z
+   zhat<- output$Postprobs
+   zhat<- apply(zhat,1,which.max)
+   V_M[s]<- v_measure(Z0,zhat)
+  
+  }
+#output   
+   
+#P_hat
+#Phi_hat  
+#beta_0_est
+#beta_pg_est
+#rho1_est
+#rho2_est
+#elapsed
+#V_M
+
+
+
+
+
+
+beta_0g_MSE<- beta_0g_MAD<- beta_pg_MSE<- beta_pg_MAD<- rho1_MSE<- rho1_MAD<- rho2_MSE<- rho2_MAD<- matrix(data=NA,ncol=G,nrow=S)
+
+for(s in 1:S){
+beta_0g_MSE[s,]<- (beta_0_est[s,]-beta_0)^2
+beta_0g_MAD[s,]<- abs(beta_0_est[s,]-beta_0)
+
+beta_pg_MSE[s,]<- (beta_pg_est[s,]-beta_pg)^2
+beta_pg_MAD[s,]<- abs(beta_pg_est[s,]-beta_pg)
+
+rho1_MSE[s,]<- (rho1_est[s,]-rho_1)^2
+rho1_MAD[s,]<- abs(rho1_est[s,]-rho_1)
+
+rho2_MSE[s,]<- (rho2_est[s,]-rho_2)^2
+rho2_MAD[s,]<- abs(rho2_est[s,]-rho_2)
+}
+
+MSE_B0<- mean(beta_0g_MSE)
+MSE_BP<- mean(beta_pg_MSE)
+MSE_rho1<- mean(rho1_MSE)
+MSE_rho2<- mean(rho2_MSE)
+
+MAD_B0<- median(apply(beta_0g_MAD,1,median))
+MAD_BP<- median(apply(beta_pg_MAD,1,median))
+MAD_rho1<- median(apply(rho1_MAD,1,median))
+MAD_rho2<- median(apply(rho2_MAD,1,median))
+
+
+P_sim3_G120<- write.csv(P_hat,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/P_sim3_G120.csv")
+Phi_sim3_G120<- write.csv(Phi_hat,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/Phi_sim3_G120.csv")
+VM_sim3_G120<- write.csv(V_M,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/VM_sim3_G120.csv")
+elapsed_sim3_G120<- write.csv(elapsed,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/elapsed_sim3_G120.csv")
+
+beta_0g_MSE_sim3_G120<- write.csv(beta_0g_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_0g_MSE_sim3_G120.csv")
+beta_0g_MAD_sim3_G120<- write.csv(beta_0g_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_0g_MAD_sim3_G120.csv")
+
+beta_pg_MSE_sim3_G120<- write.csv(beta_pg_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_pg_MSE_sim3_G120.csv")
+beta_pg_MAD_sim3_G120<- write.csv(beta_pg_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_pg_MAD_sim3_G120.csv")
+
+rho1_MSE_sim3_G120<- write.csv(rho1_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho1_MSE_sim3_G120.csv")
+rho1_MAD_sim3_G120<- write.csv(rho1_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho1_MAD_sim3_G120.csv")
+
+rho2_MSE_sim3_G120<- write.csv(rho2_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho2_MSE_sim3_G120.csv")
+rho2_MAD_sim3_G120<- write.csv(rho2_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho2_MAD_sim3_G120.csv")
+
+```
+
+## G=600
+
+
+``` {r Scenario2-sim4,eval=TRUE,echo=FALSE}
+rm(list = ls())
+
+###################################################################################################
+source("E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/ZIP_1X_2023.R")
+
+ K=2
+  N=1200
+  G=600
+  Phi<- c(0.1,0.1)
+  P<- c(0.5,0.5)
+  P1<- c(0.7,0.3)
+  
+  S<- 100
+  #S<- 50
+  P_hat<- matrix(NA,ncol=length(P),nrow=S)
+  Phi_hat<- matrix(NA,ncol=length(P),nrow=S)
+  
+  beta_0_est<- matrix(NA,nrow=S,ncol=G)
+  rho1_est<- matrix(NA,nrow=S,ncol=G)
+  rho2_est<- matrix(NA,nrow=S,ncol=G)
+  beta_pg_est<- matrix(NA,nrow=S,ncol=G)
+  
+  V_M<- rep(NA,S)
+  elapsed<- rep(NA,S)
+  
+  #iter<- NULL
+  #beta_0_est
+  #rho_est
+  
+  for(s in 1:S){
+  
+  
+  Z <- sample(c(1:K),size=N,replace = TRUE,prob=P)
+  
+  
+  
+  
+  ### creating lambdas 
+  
+  T <- round(rnorm(N,mean=10,sd=0.5)) ## vector with known Totals#hist(T)
+  #T
+  beta_0 <- rep(0.85,G) ## vector of beta_0 for all genes (baseline)
+  #rho_1 <- c(rgamma(1:3,shape=20,rate=10),rep(0,2)) ## fixed effect due to cluster 1, no effect for the last 5 genes
+  #rho_2 <- c(rep(0,3),rgamma(1:2,shape=20,rate=10)) ## fixed effect due to cluster 2, no effect for the first 5 genes
+  
+  
+  rho_1 <- c(rep(2,round(G/2)),rep(-2,round(G/2))) ## fixed effect due to cluster 1, no effect for the last 5 genes
+  rho_2 <- c(rep(-2,round(G/2)),rep(2,round(G/2))) ## fixed effect due to cluster 2, no effect for the first 5 genes
+  rho <- rbind(rho_1,rho_2)
+  #rho
+  x<- rbinom(N,1,0.5)
+  beta_pg<- c(rep(1,round(G/2)),rep(0.5,round(G/2)))
+  
+  
+  #x<- rnorm(N)
+  #beta_gp<- rnorm(G,2)
+  #beta_gp
+  
+  #beta_gp%*%t(x)
+  #beta_gp[2]*x
+  
+  #x
+  #beta<- cbind(beta_0,beta_gp)
+  #beta
+  #X<- cbind(1,x)
+  #X
+  #beta[1,]*X
+  #X
+  #beta[1,]*X[,1]
+  #beta%*%t(X)
+  
+  cell_matrix <- U_ng<-  matrix(NA,nrow=N,ncol=G)
+  for(n in 1:N){
+    for(g in 1:G){
+    if(Z[n] == 1){
+        out_1 <- ZIP_r(1,prob=Phi[1],theta =exp(log(T[n]) + beta_0[g] + rho[1,g]+beta_pg[g]*x[n]))
+        cell_matrix[n,g]<- out_1$Y
+        U_ng[n,g]<- out_1$U
+        
+      }
+    #}
+    else if(Z[n] == 2){
+      #for(g in 1:G){
+        out_2 <- ZIP_r(1,prob=Phi[2],theta=exp(log(T[n]) + beta_0[g] + rho[2,g]+beta_pg[g]*x[n]))
+        cell_matrix[n,g]<- out_2$Y
+        U_ng[n,g]<- out_2$U
+        
+      }
+    }
+  }
+  cell_matrix
+  #  Y<- cell_matrix
+  #  Y <- Y[order(Z),]
+  # # Y
+  # Y <- as.data.frame(Y)
+  #  pheatmap(Y, cluster_cols = F, cluster_rows = F)  
+  # 
+  
+  
+  elapsed[s]<- system.time({output<- ZIP_Mix_EM_1X(Y=cell_matrix,totals=T,beta_0g=beta_0,rho_gk=rho,Beta_pg=beta_pg,X=x,P=P,Phi=Phi,eps=1e-8,maxiter_EM=1000)})["elapsed"]  
+    #print(output)
+  
+  
+  
+   P_hat[s,]<- output$P
+   Phi_hat[s,]<- output$phi
+   beta_0_est[s,]<- output$beta_0g
+   beta_pg_est[s,]<- output$beta_pg_update
+   rho1_est[s,]<- output$rho_gk[1,]
+   rho2_est[s,]<- output$rho_gk[2,]
+   
+   Z0<- Z
+   zhat<- output$Postprobs
+   zhat<- apply(zhat,1,which.max)
+   V_M[s]<- v_measure(Z0,zhat)
+  
+  }
+#output   
+   
+#P_hat
+#Phi_hat  
+#beta_0_est
+#beta_pg_est
+#rho1_est
+#rho2_est
+#elapsed
+#V_M
+
+
+
+
+
+
+beta_0g_MSE<- beta_0g_MAD<- beta_pg_MSE<- beta_pg_MAD<- rho1_MSE<- rho1_MAD<- rho2_MSE<- rho2_MAD<- matrix(data=NA,ncol=G,nrow=S)
+
+for(s in 1:S){
+beta_0g_MSE[s,]<- (beta_0_est[s,]-beta_0)^2
+beta_0g_MAD[s,]<- abs(beta_0_est[s,]-beta_0)
+
+beta_pg_MSE[s,]<- (beta_pg_est[s,]-beta_pg)^2
+beta_pg_MAD[s,]<- abs(beta_pg_est[s,]-beta_pg)
+
+rho1_MSE[s,]<- (rho1_est[s,]-rho_1)^2
+rho1_MAD[s,]<- abs(rho1_est[s,]-rho_1)
+
+rho2_MSE[s,]<- (rho2_est[s,]-rho_2)^2
+rho2_MAD[s,]<- abs(rho2_est[s,]-rho_2)
+}
+
+MSE_B0<- mean(beta_0g_MSE)
+MSE_BP<- mean(beta_pg_MSE)
+MSE_rho1<- mean(rho1_MSE)
+MSE_rho2<- mean(rho2_MSE)
+
+MAD_B0<- median(apply(beta_0g_MAD,1,median))
+MAD_BP<- median(apply(beta_pg_MAD,1,median))
+MAD_rho1<- median(apply(rho1_MAD,1,median))
+MAD_rho2<- median(apply(rho2_MAD,1,median))
+
+
+P_sim4_G600<- write.csv(P_hat,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/P_sim4_G600.csv")
+Phi_sim4_G600<- write.csv(Phi_hat,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/Phi_sim4_G600.csv")
+VM_sim4_G600<- write.csv(V_M,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/VM_sim4_G600.csv")
+elapsed_sim4_G600<- write.csv(elapsed,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/elapsed_sim4_G600.csv")
+
+beta_0g_MSE_sim4_G600<- write.csv(beta_0g_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_0g_MSE_sim4_G600.csv")
+beta_0g_MAD_sim4_G600<- write.csv(beta_0g_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_0g_MAD_sim4_G600.csv")
+
+beta_pg_MSE_sim4_G600<- write.csv(beta_pg_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_pg_MSE_sim4_G600.csv")
+beta_pg_MAD_sim4_G600<- write.csv(beta_pg_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_pg_MAD_sim4_G600.csv")
+
+rho1_MSE_sim4_G600<- write.csv(rho1_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho1_MSE_sim4_G600.csv")
+rho1_MAD_sim4_G600<- write.csv(rho1_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho1_MAD_sim4_G600.csv")
+
+rho2_MSE_sim4_G600<- write.csv(rho2_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho2_MSE_sim4_G600.csv")
+rho2_MAD_sim4_G600<- write.csv(rho2_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho2_MAD_sim4_G600.csv")
+
+```
+
+<!-- ## G=1500 -->
+
+
+<!-- ``` {r Scenario2-sim5,eval=TRUE,echo=FALSE} -->
+<!-- rm(list = ls()) -->
+
+<!-- ################################################################################################### -->
+<!-- source("E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/ZIP_1X_2023.R") -->
+
+<!--  K=2 -->
+<!--   N=1200 -->
+<!--   G=1500 -->
+<!--   Phi<- c(0.1,0.1) -->
+<!--   P<- c(0.5,0.5) -->
+<!--   P1<- c(0.7,0.3) -->
+
+<!--   S<- 100 -->
+<!--   #S<- 50 -->
+<!--   P_hat<- matrix(NA,ncol=length(P),nrow=S) -->
+<!--   Phi_hat<- matrix(NA,ncol=length(P),nrow=S) -->
+
+<!--   beta_0_est<- matrix(NA,nrow=S,ncol=G) -->
+<!--   rho1_est<- matrix(NA,nrow=S,ncol=G) -->
+<!--   rho2_est<- matrix(NA,nrow=S,ncol=G) -->
+<!--   beta_pg_est<- matrix(NA,nrow=S,ncol=G) -->
+
+<!--   V_M<- rep(NA,S) -->
+<!--   elapsed<- rep(NA,S) -->
+
+<!--   #iter<- NULL -->
+<!--   #beta_0_est -->
+<!--   #rho_est -->
+
+<!--   for(s in 1:S){ -->
+
+
+<!--   Z <- sample(c(1:K),size=N,replace = TRUE,prob=P) -->
+
+
+
+
+<!--   ### creating lambdas  -->
+
+<!--   T <- round(rnorm(N,mean=10,sd=0.5)) ## vector with known Totals#hist(T) -->
+<!--   #T -->
+<!--   beta_0 <- rep(0.85,G) ## vector of beta_0 for all genes (baseline) -->
+<!--   #rho_1 <- c(rgamma(1:3,shape=20,rate=10),rep(0,2)) ## fixed effect due to cluster 1, no effect for the last 5 genes -->
+<!--   #rho_2 <- c(rep(0,3),rgamma(1:2,shape=20,rate=10)) ## fixed effect due to cluster 2, no effect for the first 5 genes -->
+
+
+<!--   rho_1 <- c(rep(2,round(G/2)),rep(-2,round(G/2))) ## fixed effect due to cluster 1, no effect for the last 5 genes -->
+<!--   rho_2 <- c(rep(-2,round(G/2)),rep(2,round(G/2))) ## fixed effect due to cluster 2, no effect for the first 5 genes -->
+<!--   rho <- rbind(rho_1,rho_2) -->
+<!--   #rho -->
+<!--   x<- rbinom(N,1,0.5) -->
+<!--   beta_pg<- c(rep(1,round(G/2)),rep(0.5,round(G/2))) -->
+
+
+<!--   #x<- rnorm(N) -->
+<!--   #beta_gp<- rnorm(G,2) -->
+<!--   #beta_gp -->
+
+<!--   #beta_gp%*%t(x) -->
+<!--   #beta_gp[2]*x -->
+
+<!--   #x -->
+<!--   #beta<- cbind(beta_0,beta_gp) -->
+<!--   #beta -->
+<!--   #X<- cbind(1,x) -->
+<!--   #X -->
+<!--   #beta[1,]*X -->
+<!--   #X -->
+<!--   #beta[1,]*X[,1] -->
+<!--   #beta%*%t(X) -->
+
+<!--   cell_matrix <- U_ng<-  matrix(NA,nrow=N,ncol=G) -->
+<!--   for(n in 1:N){ -->
+<!--     for(g in 1:G){ -->
+<!--     if(Z[n] == 1){ -->
+<!--         out_1 <- ZIP_r(1,prob=Phi[1],theta =exp(log(T[n]) + beta_0[g] + rho[1,g]+beta_pg[g]*x[n])) -->
+<!--         cell_matrix[n,g]<- out_1$Y -->
+<!--         U_ng[n,g]<- out_1$U -->
+
+<!--       } -->
+<!--     #} -->
+<!--     else if(Z[n] == 2){ -->
+<!--       #for(g in 1:G){ -->
+<!--         out_2 <- ZIP_r(1,prob=Phi[2],theta=exp(log(T[n]) + beta_0[g] + rho[2,g]+beta_pg[g]*x[n])) -->
+<!--         cell_matrix[n,g]<- out_2$Y -->
+<!--         U_ng[n,g]<- out_2$U -->
+
+<!--       } -->
+<!--     } -->
+<!--   } -->
+<!--   cell_matrix -->
+<!--   #  Y<- cell_matrix -->
+<!--   #  Y <- Y[order(Z),] -->
+<!--   # # Y -->
+<!--   # Y <- as.data.frame(Y) -->
+<!--   #  pheatmap(Y, cluster_cols = F, cluster_rows = F)   -->
+<!--   #  -->
+
+
+<!--   elapsed[s]<- system.time({output<- ZIP_Mix_EM_1X(Y=cell_matrix,totals=T,beta_0g=beta_0,rho_gk=rho,Beta_pg=beta_pg,X=x,P=P,Phi=Phi,eps=1e-8,maxiter_EM=1000)})["elapsed"]   -->
+<!--     #print(output) -->
+
+
+
+<!--    P_hat[s,]<- output$P -->
+<!--    Phi_hat[s,]<- output$phi -->
+<!--    beta_0_est[s,]<- output$beta_0g -->
+<!--    beta_pg_est[s,]<- output$beta_pg_update -->
+<!--    rho1_est[s,]<- output$rho_gk[1,] -->
+<!--    rho2_est[s,]<- output$rho_gk[2,] -->
+
+<!--    Z0<- Z -->
+<!--    zhat<- output$Postprobs -->
+<!--    zhat<- apply(zhat,1,which.max) -->
+<!--    V_M[s]<- v_measure(Z0,zhat) -->
+
+<!--   } -->
+<!-- #output    -->
+
+<!-- #P_hat -->
+<!-- #Phi_hat   -->
+<!-- #beta_0_est -->
+<!-- #beta_pg_est -->
+<!-- #rho1_est -->
+<!-- #rho2_est -->
+<!-- #elapsed -->
+<!-- #V_M -->
+
+
+
+
+
+
+<!-- beta_0g_MSE<- beta_0g_MAD<- beta_pg_MSE<- beta_pg_MAD<- rho1_MSE<- rho1_MAD<- rho2_MSE<- rho2_MAD<- matrix(data=NA,ncol=G,nrow=S) -->
+
+<!-- for(s in 1:S){ -->
+<!-- beta_0g_MSE[s,]<- (beta_0_est[s,]-beta_0)^2 -->
+<!-- beta_0g_MAD[s,]<- abs(beta_0_est[s,]-beta_0) -->
+
+<!-- beta_pg_MSE[s,]<- (beta_pg_est[s,]-beta_pg)^2 -->
+<!-- beta_pg_MAD[s,]<- abs(beta_pg_est[s,]-beta_pg) -->
+
+<!-- rho1_MSE[s,]<- (rho1_est[s,]-rho_1)^2 -->
+<!-- rho1_MAD[s,]<- abs(rho1_est[s,]-rho_1) -->
+
+<!-- rho2_MSE[s,]<- (rho2_est[s,]-rho_2)^2 -->
+<!-- rho2_MAD[s,]<- abs(rho2_est[s,]-rho_2) -->
+<!-- } -->
+
+<!-- MSE_B0<- mean(beta_0g_MSE) -->
+<!-- MSE_BP<- mean(beta_pg_MSE) -->
+<!-- MSE_rho1<- mean(rho1_MSE) -->
+<!-- MSE_rho2<- mean(rho2_MSE) -->
+
+<!-- MAD_B0<- median(apply(beta_0g_MAD,1,median)) -->
+<!-- MAD_BP<- median(apply(beta_pg_MAD,1,median)) -->
+<!-- MAD_rho1<- median(apply(rho1_MAD,1,median)) -->
+<!-- MAD_rho2<- median(apply(rho2_MAD,1,median)) -->
+
+
+<!-- P_sim5_G1500<- write.csv(P_hat,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/P_sim5_G1500.csv") -->
+<!-- Phi_sim5_G1500<- write.csv(Phi_hat,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/Phi_sim5_G1500.csv") -->
+<!-- VM_sim5_G1500<- write.csv(V_M,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/VM_sim5_G1500.csv") -->
+<!-- elapsed_sim5_G1500<- write.csv(elapsed,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/elapsed_sim5_G1500.csv") -->
+
+<!-- beta_0g_MSE_sim5_G1500<- write.csv(beta_0g_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_0g_MSE_sim5_G1500.csv") -->
+<!-- beta_0g_MAD_sim5_G1500<- write.csv(beta_0g_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_0g_MAD_sim5_G1500.csv") -->
+
+<!-- beta_pg_MSE_sim5_G1500<- write.csv(beta_pg_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_pg_MSE_sim5_G1500.csv") -->
+<!-- beta_pg_MAD_sim5_G1500<- write.csv(beta_pg_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/beta_pg_MAD_sim5_G1500.csv") -->
+
+<!-- rho1_MSE_sim5_G1500<- write.csv(rho1_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho1_MSE_sim5_G1500.csv") -->
+<!-- rho1_MAD_sim5_G1500<- write.csv(rho1_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho1_MAD_sim5_G1500.csv") -->
+
+<!-- rho2_MSE_sim5_G1500<- write.csv(rho2_MSE,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho2_MSE_sim5_G1500.csv") -->
+<!-- rho2_MAD_sim5_G1500<- write.csv(rho2_MAD,"E:/Thesis-Feb,March2022/Programming Project 2/ZIP_A/Scenario2/rho2_MAD_sim5_G1500.csv") -->
+
+<!-- ``` -->
